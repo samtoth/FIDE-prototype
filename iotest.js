@@ -1,0 +1,11 @@
+TypeError: Cannot read properties of undefined (reading 'term')
+    at go (/home/samt/.nvm/versions/node/v17.3.0/lib/node_modules/formcore-js/FmcToJs.js:537:30)
+    at go (/home/samt/.nvm/versions/node/v17.3.0/lib/node_modules/formcore-js/FmcToJs.js:545:9)
+    at dependency_sort (/home/samt/.nvm/versions/node/v17.3.0/lib/node_modules/formcore-js/FmcToJs.js:572:3)
+    at core_to_comp (/home/samt/.nvm/versions/node/v17.3.0/lib/node_modules/formcore-js/FmcToJs.js:728:19)
+    at compile_defs (/home/samt/.nvm/versions/node/v17.3.0/lib/node_modules/formcore-js/FmcToJs.js:1446:28)
+    at Object.compile (/home/samt/.nvm/versions/node/v17.3.0/lib/node_modules/formcore-js/FmcToJs.js:2182:10)
+    at /home/samt/.nvm/versions/node/v17.3.0/lib/node_modules/formcore-js/main.js:75:31
+    at Object.<anonymous> (/home/samt/.nvm/versions/node/v17.3.0/lib/node_modules/formcore-js/main.js:88:3)
+    at Module._compile (node:internal/modules/cjs/loader:1097:14)
+    at Object.Module._extensions..js (node:internal/modules/cjs/loader:1149:10)
