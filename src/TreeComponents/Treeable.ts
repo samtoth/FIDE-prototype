@@ -10,8 +10,9 @@
 //       name : String
 //
 import produce, {immerable} from "immer"
-import {Either} from "fp-ts"
+import {Either} from "fp-ts/Either"
 import {TreeUUID} from "features/formDefinition";
+import {FIDETree, FormCore} from "./FIDE-lang";
 
 export class Treeable<T extends BasicTag, Children> {
     [immerable] = true
@@ -25,12 +26,6 @@ export class Treeable<T extends BasicTag, Children> {
         this.folded = folded
         this.children = children
     }
-}
-
-const setChildren = (tree, children) => {
-    let newtree = tree
-    newtree.children = children
-    return newtree
 }
 
 export type TreeIndex = number[]

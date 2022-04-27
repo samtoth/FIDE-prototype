@@ -3,8 +3,8 @@ import {cursor_child, cursor_parent, cursor_sibling_dec, cursor_sibling_inc, cur
 import {useDispatch} from 'react-redux'
 import {useState} from 'react'
 import {info} from 'features/log'
-import {foldToggle} from 'Treeable'
-import {replaceWithHole} from 'Hole'
+import {foldToggle} from 'TreeComponents/Treeable'
+import {replaceWithHole} from 'TreeComponents/Hole'
 import HoleFillDialog from 'holeFillDialog'
 
 interface ExprEditorProps {

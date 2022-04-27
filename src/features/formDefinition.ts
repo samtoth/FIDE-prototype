@@ -1,7 +1,7 @@
 import {createSlice} from '@reduxjs/toolkit'
 import {useDispatch, useSelector} from 'react-redux'
-import {getAt, editAt, Treeable, TreeIndex} from '../Treeable'
-import {forall, lam, app, lit, fvar, termToTree, makeDef, ty, printFormJs} from '../FIDE-lang'
+import {getAt, editAt, Treeable, TreeIndex} from '../TreeComponents/Treeable'
+import {forall, lam, app, lit, fvar, termToTree, makeDef, ty, printFormJs} from '../TreeComponents/FIDE-lang'
 import {fmc_to_js} from 'formcore-js'
 import {error} from './log'
 import {Map} from 'immutable';

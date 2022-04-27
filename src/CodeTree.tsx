@@ -2,7 +2,7 @@ import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {faCaretRight, faAngleDown} from '@fortawesome/free-solid-svg-icons'
 import {editTreeAt, cursor_set, useFormDef, TreeUUID} from './features/formDefinition'
 import {useDispatch} from 'react-redux'
-import {BasicTag, foldToggle, index_to_string, Treeable, TreeIndex} from './Treeable'
+import {BasicTag, foldToggle, index_to_string, Treeable, TreeIndex} from './TreeComponents/Treeable'
 
 
 interface CodeTreeProps<T extends BasicTag, C> {

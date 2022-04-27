@@ -1,9 +1,9 @@
 import {Selectable} from "CodeViewFeatures";
 import {info} from "features/log";
-import {app, fvar, lit} from "FIDE-lang";
+import {app, fvar, lit} from "TreeComponents/FIDE-lang";
 import {useEffect, useState} from "react";
 import {useDispatch} from "react-redux";
-import {BasicTag, Desugarable, Displayable, DisplayProps, Treeable, TreeIndex} from "Treeable";
+import {BasicTag, Desugarable, Displayable, DisplayProps, Treeable, TreeIndex} from "TreeComponents/Treeable";
 
 type HoleUUID = number
 

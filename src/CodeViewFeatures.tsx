@@ -1,6 +1,6 @@
 import {cursor_set, getTree, LoadedTreeState, TreeUUID, useFormDef} from "features/formDefinition"
 import {useDispatch} from "react-redux"
-import {index_to_string, TreeIndex} from "Treeable"
+import {index_to_string, TreeIndex} from "TreeComponents/Treeable"
 
 type SelectableProps = {
     treeId: TreeUUID | undefined,
