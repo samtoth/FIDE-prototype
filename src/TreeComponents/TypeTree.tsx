@@ -1,4 +1,4 @@
-import {DisplayProps, Treeable, TreeIndex} from "./Treeable";
+import {BasicTag, DisplayProps, Treeable, TreeIndex} from "./Treeable";
 import {Selectable} from "../CodeViewFeatures";
 import {Context, FIDETree, ty} from "./FIDE-lang";
 
@@ -18,8 +18,20 @@ export class TypeTree
         return ty
     }
 
-    display(coord, props: DisplayProps) {
+    display(coord: TreeIndex, props: DisplayProps) {
         return <Selectable coord={coord} active={props.active}><span className="katex katex-html base"><span
             className="mord">⋆</span></span></Selectable>
+    }
+
+    normalise(): FIDETree<BasicTag, unknown> {
+        return this;
+    }
+
+    reduce(): FIDETree<BasicTag, unknown> {
+        return this;
+    }
+
+    substitute<T1 extends BasicTag, C1>(idx: number, tree: Treeable<T1, C1>): FIDETree<TypeTag, []> | Treeable<T1, C1> {
+        return this
     }
 }

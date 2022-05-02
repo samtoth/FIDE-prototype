@@ -12,7 +12,7 @@
 import produce, {immerable} from "immer"
 import {Either} from "fp-ts/Either"
 import {TreeUUID} from "features/formDefinition";
-import {FIDETree, FormCore} from "./FIDE-lang";
+import {Context, FIDETree, FormCore} from "./FIDE-lang";
 
 export class Treeable<T extends BasicTag, Children> {
     [immerable] = true
@@ -30,6 +30,10 @@ export class Treeable<T extends BasicTag, Children> {
 
 export type TreeIndex = number[]
 
+export const idx_eql = (id1: TreeIndex, id2: TreeIndex): boolean => {
+    return index_to_string(id1) === index_to_string(id2)
+}
+
 export const index_to_string: (c: TreeIndex) => string = (coord: TreeIndex) => {
     if (coord.length && coord.length > 0) {
         const coordCopy = coord
@@ -46,8 +50,10 @@ export interface BasicTag {
 export interface DisplayProps {
     active: boolean,
     highlights: TreeIndex[],
-    treeId: TreeUUID
+    treeId: TreeUUID,
+    context: Context
 }
+
 
 export interface Displayable<T extends BasicTag, C> extends Treeable<T, C> {
     display: (coord: TreeIndex, props: DisplayProps) => JSX.Element
@@ -57,10 +63,10 @@ export interface Desugarable<T extends BasicTag, C> extends Treeable<T, C> {
     desugar: () => FormCore
 }
 
-export type Ctx = Map<String, Ctx>
+
 export type TypeCheckError = string
 export interface Typable<T extends BasicTag, C> extends Treeable<T, C> {
-    typeCheck<T extends BasicTag, C>(expectedType: Treeable<T, C>, context: Ctx): Either<TypeCheckError, []>
+    typeCheck<T extends BasicTag, C>(expectedType: Treeable<T, C>, context: Context): Either<TypeCheckError, []>
 
     typeInfer(context: Ctx): Either<TypeCheckError, Treeable<BasicTag, any>>
 }
@@ -70,14 +76,14 @@ export interface Typable<T extends BasicTag, C> extends Treeable<T, C> {
 // editAt : Coord -> (Tree -> Tree) -> Tree -> Tree
 export const editAt:
     <T extends BasicTag, C>(coords: TreeIndex[],
-        tf: <T1 extends BasicTag, C1, T2 extends BasicTag, C2>(t: Treeable<T1, C1>
-        ) => Treeable<T2, C2>, tree: Treeable<T, C>) => Treeable<T, C>
+        tf: <T1 extends BasicTag, C1>(t: Treeable<T, C>
+        ) => Treeable<T1, C1>, tree: Treeable<T, C>) => Treeable<T1, C1>
     = (coords, treeFunc, tree) => {
         if (coords.length === 0) {
             return tree
         } else {
             const [coord, ...rest] = coords
-            let f = ((fix) => (lcoord, ltreeFunc, ltree) => {
+            let f = ((fix) => (lcoord: TreeIndex, ltreeFunc, ltree) => {
                 if (lcoord.length === 0) {
                     return (ltreeFunc(ltree))
                 } else {
@@ -104,5 +110,5 @@ export const getAt: (c: TreeIndex, t: Treeable) => Treeable
     }
 
 // fold : Tree -> Tree
-export const foldToggle: (t: Treeable) => Treeable
+export const foldToggle: (t: Treeable<BasicTag, unknown>) => Treeable<BasicTag, unknown>
     = (tree) => {return produce(tree, draft => {draft.folded = !draft.folded})}

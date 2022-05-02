@@ -28,7 +28,7 @@
 
 
 
-import {BasicTag, Desugarable, Displayable, TreeIndex} from './Treeable'
+import {BasicTag, Desugarable, Displayable, Treeable, TreeIndex, WithContext} from './Treeable'
 import {ADT, matchI} from 'ts-adt'
 import produce from 'immer'
 import {ForallTree} from "./ForallTree";
@@ -64,17 +64,31 @@ export const contextGet = (context: Context, index: number) => {
 
 export interface Introduction<T extends BasicTag, C> extends FIDETree<T, C> {
     varName(): Ident,
-    varType<T1 extends BasicTag, C1>(): FIDETree<T1, C1>
+    varType(): FIDETree<BasicTag, unknown>
 }
 
 export interface FIDETree<T extends BasicTag, C> extends Desugarable<T, C>, Displayable<T, C> {
-    reduce<T1 extends BasicTag, C1>(context: Context): FIDETree<T1, C1>
+    reduce(): FIDETree<BasicTag, unknown>
 
-    normalise<T1 extends BasicTag, C1>(context: Context): FIDETree<T1, C1>
+    normalise(): FIDETree<BasicTag, unknown>
+
+    substitute<T1 extends BasicTag, C1>(idx: number, tree: Treeable<T1, C1>): FIDETree<T, C> | Treeable<T1, C1>
+
+    contextProp(current: TreeIndex, target: TreeIndex, context: Context): Context
+}
+
+export const gatherContext = (t: FIDETree<BasicTag, unknown>, idx: TreeIndex): Context => {
+    return t.contextProp([], idx, [])
+}
+
+export function reduceAndNormalise(tree: FIDETree<BasicTag, unknown>): FIDETree<BasicTag, unknown>{
+    const wn = tree.reduce()
+    return wn.normalise()
+    console.log("postnormal")
 }
 
 const contextApp = (context: Context, t: TreeIndex,): Context => {
-    return produce(context, draft => draft.push(t))
+    return [...context, t]
 }
 
 export const forall: (b: boolean, i: Ident, t: FormCore, r: FormCore) => FormCore = (vis, name, type, rtype) => {
@@ -101,26 +115,24 @@ export const fvar: (n: number) => FormCore = name => {
     }
 }
 
-export const ty: FormCore = {_type: "ty"}
+export const ty: FormCore = {_type: "ty", value: "type"}
 
-export const lit: (l: FormLit) => FormCore = formlit => {
-    return {
-        _type: "lit", value: formlit
-    }
-}
+export const lit = (formlit: FormLit): FormCore => ({
+    _type: "lit", value: formlit
+})
 
-export const makeDef = (bindName, type, term) => {
+export const makeDef = (bindName: string, type: FormCore, term: FormCore): FormCore => {
     return {
         _type: "def", value: [bindName, type, term]
     }
 }
 
-export const termToTree: (form: FormCore, context: Context, index: TreeIndex) => FIDETree<any, any>
+export const termToTree: (form: FormCore, context: Context, index: TreeIndex) => FIDETree<BasicTag, unknown>
     = (term: FormCore, context: Context, index: TreeIndex) => {
         return matchI(term)({
             forall: ({value}) => new ForallTree(value, context, index),
-            lam: ({value}) => new LamTree(value, context, index),
-            app: ({value}) => new AppTree(value, context, index),
+            lam: ({value}) => LamTree.fromForm(value, context, index),
+            app: ({value}) => AppTree.fromForm(value, context, index),
             fvar: ({value}) => new VarTree(value, context, index),
             ty: () => new TypeTree(context, index),
             lit: ({value}) => new LitTree(value, context, index),
@@ -129,20 +141,11 @@ export const termToTree: (form: FormCore, context: Context, index: TreeIndex) =>
     }
 
 
-const litToTree = (lit) => {
-    return lit(
-        (num) => {return mkTree({name: "lit: " + num, latex: _ => num, value: num}, false, [])},
-        (ch) => {return mkTree({name: "char: " + ch, latex: _ => ch, value: ch}, false, [])},
-        (string) => {return mkTree({name: "string: " + string, latex: _ => string, value: string}, false, [])}
-    )
-}
-
-
-export const printFormJs = (term) => {
+export const printFormJs = (term: FormCore): string => {
     return matchI(term)({
         forall: ({value: [erased, name, type, rtype]}) => {
             const start = erased ? "%" : "@"
-            const bind = "(" + name + " : " + printFormJs(type) + " )"
+            const bind: string = "(" + name + " : " + printFormJs(type) + " )"
             return (start + bind + " " + printFormJs(rtype))
         },
         lam: ({value: [name, body]}) => {
@@ -152,11 +155,11 @@ export const printFormJs = (term) => {
             return ("(" + printFormJs(func) + " " + printFormJs(arg) + ")")
         },
         fvar: ({value: [fvarName]}) => {
-            return fvarName
+            return `${fvarName}`
         },
         ty: (_v) => "*",
         lit: ({value: lit}) => {
-            return "lit"
+            return `${lit}`
         },
         def: ({value: [name, type, expr, arg]}) => {
             return `${name} : ${printFormJs(type)} = ${printFormJs(expr)}`

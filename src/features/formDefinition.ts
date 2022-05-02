@@ -1,7 +1,18 @@
 import {createSlice} from '@reduxjs/toolkit'
 import {useDispatch, useSelector} from 'react-redux'
-import {getAt, editAt, Treeable, TreeIndex} from '../TreeComponents/Treeable'
-import {forall, lam, app, lit, fvar, termToTree, makeDef, ty, printFormJs} from '../TreeComponents/FIDE-lang'
+import {getAt, editAt, Treeable, TreeIndex, BasicTag} from '../TreeComponents/Treeable'
+import {
+    forall,
+    lam,
+    app,
+    lit,
+    fvar,
+    termToTree,
+    makeDef,
+    ty,
+    printFormJs,
+    reduceAndNormalise, gatherContext, FIDETree
+} from '../TreeComponents/FIDE-lang'
 import {fmc_to_js} from 'formcore-js'
 import {error} from './log'
 import {Map} from 'immutable';
@@ -29,7 +40,7 @@ const constrainCursor = <T extends BasicTag, C>(cursor: TreeIndex, tree: Treeabl
     }
 }
 
-export type Tree = {cursor: TreeIndex[], tree: Treeable}
+export type Tree = {cursor: TreeIndex[], tree: Treeable<BasicTag, unknown>}
 export type TreeUUID = number | undefined
 
 export type LoadedTreeState = {
@@ -63,8 +74,6 @@ export const getTree = (state: LoadedTreeState, id: TreeUUID | undefined) => {
     return (id ? state.otherTrees.get(id) : state.mainTree)
 }
 
-
-
 const setTree: (state: LoadedTreeState, id: TreeUUID | undefined, tree: Tree) => LoadedTreeState = (state, id, tree) => {
     if (id) {
         return {
@@ -84,15 +93,19 @@ export const loadedTreeSlice = createSlice({
     initialState,
     reducers: {
         cursor_sibling_inc: (state, action) => {
+            // @ts-ignore
             const tree = getTree(state, action.payload.id)
-            const cursor = produce(tree.cursor[tree?.cursor.length - 1], draft => {
+            if (tree === undefined) {
+                throw Error("undefined tree")
+            }
+            const cursor = produce(tree?.cursor[tree?.cursor.length - 1], draft => {
                 if (draft.length === 0) {
                     draft.push(0)
                 } else {
                     const parent = draft.slice(0, -1)
                     const curr = current(current(draft))
                     //console.log("draft: ", curr, "parent: ", parent)
-                    const treeParent = getAt(parent, tree.tree)
+                    const treeParent = getAt(parent, tree?.tree)
                     //console.log("new length: ", draft[draft.length - 1] + 1, "number sibs", treeParent.children.length)
                     if (draft[draft.length - 1] + 1 >= treeParent.children.length) {
                         if (treeParent.children[draft[draft.length - 1]].children.length != 0) {
@@ -108,7 +121,10 @@ export const loadedTreeSlice = createSlice({
         },
         cursor_sibling_dec: (state, action) => {
             const tree = getTree(state, action.payload.id)
-            let cursor = produce(tree.cursor[tree?.cursor.length - 1], draft => {
+            if (tree === undefined) {
+                throw Error("undefined tree")
+            }
+            let cursor = produce(tree?.cursor[tree?.cursor.length - 1], draft => {
                 const parent = draft.slice(0, -1)
                 const treeParent = getAt(parent, tree.tree)
                 if (draft[draft.length - 1] - 1 < 0) {
@@ -122,7 +138,10 @@ export const loadedTreeSlice = createSlice({
         },
         cursor_parent: (state, action) => {
             const tree = getTree(state, action.payload.id)
-            if (tree.cursor[0].length === 0) {
+            if (tree === undefined) {
+                throw Error("undefined tree")
+            }
+            if (tree?.cursor[0].length === 0) {
                 return state
             } else {
                 return setTree(state, action.payload.id, {...tree, cursor: [tree.cursor[0].slice(0, -1)]})
@@ -148,7 +167,31 @@ export const loadedTreeSlice = createSlice({
         },
         editTreeAt: (state, action) => {
             const tree = getTree(state, action.payload.id)
-            return setTree(state, action.payload.id, {...tree, tree: editAt(action.payload.at, action.payload.func, tree.tree)})
+            return setTree(state, action.payload.id, {...tree, tree: editAt([action.payload.at], action.payload.func, tree.tree)})
+        },
+        replaceWithNormal: (state, action) => {
+            const tree = getTree(state, action.payload.id)
+            if (tree == null){
+                return state
+            }
+
+            const at: TreeIndex[] = [(() => {if (action.payload.at == null) {
+                return tree?.cursor[0]
+            } else {
+                return action.payload.at
+            }})()]
+
+            //const context = gatherContext(tree.tree as FIDETree<BasicTag, unknown>, at[0])
+
+            const func = (t) => {
+                if (t.normalise) {
+                    return reduceAndNormalise(t)
+                }else {
+                    return t
+                }
+            }
+
+            return setTree(state, action.payload.id, {...tree, tree: editAt(at, func, tree?.tree)})
         },
         compile: (state) => {
             try {
@@ -169,6 +212,6 @@ export const useFormDef: () => LoadedTreeState = () => {
 }
 
 // Action creators are generated for each case reducer function
-export const {cursor_sibling_inc, cursor_sibling_dec, cursor_parent, cursor_child, cursor_unset, cursor_set, editTree, editTreeAt, compile} = loadedTreeSlice.actions
+export const {cursor_sibling_inc, cursor_sibling_dec, cursor_parent, cursor_child, cursor_unset, cursor_set, editTree, editTreeAt, replaceWithNormal, compile} = loadedTreeSlice.actions
 
 export default loadedTreeSlice.reducer
