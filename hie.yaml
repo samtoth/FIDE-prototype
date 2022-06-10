@@ -1,0 +1,7 @@
+cradle:
+  cabal:
+    - path: "src"
+      component: "lib:FIDE-proto-V2"
+
+    - path: "test"
+      component: "FIDE-proto-V2:test:spec"

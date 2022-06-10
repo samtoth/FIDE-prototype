@@ -1,0 +1,315 @@
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GADTs, UnicodeSyntax #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies, DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# OPTIONS_GHC -fno-warn-partial-type-signatures -fdefer-typed-holes #-}
+
+module FIDECore (
+  AllFC(..), WellTyped(),
+  mkWellTyped,
+  tryToNat,
+  natToFC, normalise,
+  normaliseUnsafe,
+  typeCheck
+  ) where
+
+import CodeTree
+import Data.Natural
+
+import Optics
+import Optics.TH
+
+import Data.Functor.Foldable.TH (makeBaseFunctor)
+
+data AllFC where
+  -- standard types and terms of CoC
+  ATy :: Nat -> AllFC
+  ASet ∷ AllFC
+  AApp ∷ AllFC → AllFC → AllFC
+  AVar ∷ Nat → AllFC
+  ALam ∷ AllFC → AllFC
+  AProd ∷ AllFC → AllFC → AllFC
+
+  -- eliminated versions of λ (Λ) and Π (∀)
+  AeLam ∷ AllFC → AllFC
+  AeProd ∷ AllFC → AllFC → AllFC
+
+  -- ι type and respective proof terms
+  AIota ∷ AllFC → AllFC → AllFC
+  ASum ∷ AllFC → AllFC → AllFC
+  AProj1 ∷ AllFC → AllFC
+  AProj2 ∷ AllFC → AllFC
+
+  -- β η equality type and respective proof terms
+  AEq ∷ AllFC → AllFC → AllFC
+  ABeta ∷ AllFC
+  ASigma ∷ AllFC → AllFC
+  ARho ∷ AllFC → AllFC → AllFC
+
+  ATop ∷ AllFC
+
+
+makeBaseFunctor ''AllFC
+makeLenses ''AllFC
+
+instance CodeTree AllFC AllFC where
+  desugar = id
+
+  name ASet = "Set"
+  name (ATy n) = "Ty " <> show n
+  name (AApp a b) = "(" <> name a <> " " <> name b <> ")"
+  name (ALam bod) = "λ." <> name bod 
+  name (AProd a b) = "Π(#: " <> name a <> "). " <> name b
+  name (AVar n) = "# " <> show n
+
+  name (AeLam bod) = "Λ." <> name bod
+  name (AeProd a b) = "∀(#: " <> name a <> "). " <> name b
+
+  name (AIota a b) = "ι(#: " <> name a <> "). " <> name b
+  name (ASum a b) = "<" <> name a <> ", " <> name b <> ")"
+  name (AProj1 a) = "[" <> name a <> "]¹"
+  name (AProj2 a) = "[" <> name a <> "]²"
+
+  name (AEq a b) = name a <> " ~ " <> name b
+  name ABeta = "β"
+  name (ASigma a) = "σ[" <> name a <> "]"
+  name (ARho a b) = "ρ[" <> name a <> " / " <> name b <> "]"
+
+  name ATop = "U"
+
+  children (ASet) = []
+  children (ATy _) = []
+  children (AApp a b) = [MkSome a, MkSome b]
+  children (ALam a) = [MkSome a]
+  children (AVar _) = []
+  children (AProd rty xty) = [MkSome rty, MkSome xty]
+
+  children (AeLam bod) = [MkSome bod]
+  children (AeProd a b) = [MkSome a, MkSome b]
+
+  children (AIota a b) = [MkSome a, MkSome b]
+  children (ASum a b) = [MkSome a, MkSome b]
+  children (AProj1 a) = [MkSome a]
+  children (AProj2 a) = [MkSome a]
+
+  children (AEq a b) = [MkSome a, MkSome b]
+  children (ABeta) = []
+  children (ASigma a) = [MkSome a]
+  children (ARho a b) = [MkSome a, MkSome b]
+
+  children ATop = []
+
+
+instance Eq AllFC where
+  x == y = reduceOnce x `eq` reduceOnce y
+    where eq ∷ AllFC → AllFC → Bool
+          eq (ASet) (ASet) = True
+          eq (ATy a) (ATy b) = a == b
+          eq (AApp a b) (AApp c d) = a == c && b == d
+          eq (ALam a) (ALam b) = a == b
+          eq (AVar a) (AVar b) = a == b
+          eq (AProd a b) (AProd c d) = a == c && b == d
+
+          eq (AeLam a) (AeLam b) = a == b
+          eq (AeProd a b) (AeProd c d) = a == c && b == d
+
+          eq (AIota a b) (AIota c d) = a == c && b == d
+          eq (ASum a b) (ASum c d) = a == c && c == d
+          eq (AProj1 a) (AProj1 b) = a == b
+          eq (AProj2 a) (AProj2 b) = a == b
+
+          eq (AEq a b) (AEq c d) = a == b && c == d
+          eq ABeta ABeta = True
+          eq (ASigma a) (ASigma b) = a == b
+          eq (ARho a b) (ARho c d) = a == c && b == d
+
+          eq ATop ATop = True
+          
+          eq _ _ = False
+          
+
+
+
+substitute ∷ AllFC -- ^ subject
+           → Nat   -- ^ index
+           → AllFC -- ^ Replacee
+           → AllFC
+substitute ASet _ _ = ASet
+substitute (ATy n) _ _ = ATy n
+substitute (AVar n) idx r
+  = if n == idx then r else AVar n
+substitute (ALam b) idx r
+  = ALam $ substitute b (Suc idx) (shift 1 0 r)
+substitute (AApp a b) idx r
+  = AApp (substitute a idx r) (substitute b idx r)
+substitute (AProd xty rty) idx r
+  = AProd (substitute xty idx r) $ substitute rty (Suc idx) (shift 1 0 r)
+
+
+
+
+{- shift code assisted by https://github.com/Gabriella439/Haskell-Morte-Library/issues/1 --}
+shift ∷ Integer -- ^ shift amount
+      → Nat -- ^ cutoff
+      → AllFC -- ^ Term
+      → AllFC
+shift s c ASet = ASet 
+shift s c (ATy n) = ATy n
+shift s c (AVar n) = if n < c
+  then AVar n
+  else AVar . toEnum $ (fromEnum n) + (fromEnum s)
+shift s c (ALam b) = ALam $ shift s (Suc c) b
+shift s c (AApp a b) = AApp (shift s c a) (shift s c b)
+shift s c (AProd xty rty) = AProd (shift s c xty) (shift s (Suc c) rty)
+
+isNormal ∷ AllFC → Bool
+isNormal ASet = True
+isNormal (ATy _) = True
+isNormal (AVar _) = True
+isNormal (AApp (ALam _) _) = False
+isNormal (AApp t1 t2) = isNormal t1 && isNormal t2
+isNormal (ALam bod) = isNormal bod
+isNormal (AProd t1 t2) = isNormal t1 && isNormal t2
+
+reduceOnce ∷ AllFC → AllFC
+reduceOnce (AApp (ALam bod) ag)
+  = shift (-1) 0 $ substitute bod 0 (shift 1 0 ag)
+reduceOnce (AApp fn ag)
+  | isNormal fn = AApp fn (reduceOnce ag)
+  | otherwise = AApp (reduceOnce fn) ag
+reduceOnce (ALam bod)
+  = ALam $ reduceOnce bod
+reduceOnce (AProd xty rty)
+  | isNormal xty = AProd xty $ reduceOnce rty
+  | otherwise = AProd (reduceOnce xty) rty
+reduceOnce t = t
+
+reductions ∷ AllFC → [AllFC]
+reductions = iterate reduceOnce
+             
+normaliseUnsafe ∷ Nat → AllFC  → AllFC
+normaliseUnsafe gas = head . dropWhile (not . isNormal) . Data.Natural.take gas . reductions
+{- generate stream of iterated reductions, and then take the first such reduction that is in normal form -}
+
+
+
+instance Show AllFC where
+  show = name
+
+natToFC ∷ Nat → AllFC
+natToFC n = ALam  $ ALam $ go n
+  where
+    go Zero = AVar 0
+    go (Suc n) = AApp (AVar 1) $ go n
+
+tryToNat ∷ AllFC → Maybe Nat 
+tryToNat t = do
+  let (ALam (ALam b)) = t
+  go 0 b
+  where
+    go ∷ Nat → AllFC → Maybe Nat
+    go i tt = do
+      case tt of
+        AVar 0 → Just i
+        AApp a b → do
+          let (AVar 1) = a
+          go (Suc i) b
+        _ → Nothing
+
+
+type Context = [AllFC]
+
+data TypeCheckFailure where
+  Unspecified :: TypeCheckFailure
+  ExpectedTypeNotReceived ∷ AllFC -- ^ expected
+                          → AllFC -- ^ inferred
+                          → TypeCheckFailure
+  UnInferrable :: TypeCheckFailure
+  VarOutOfBounds :: TypeCheckFailure
+  ExpectedSort :: TypeCheckFailure
+  deriving (Eq, Show)
+
+typeCheck ∷ AllFC -- ^ Scrutinee
+          → AllFC -- ^ Expected type
+          → Context
+          → Either TypeCheckFailure ()
+typeCheck scrut' expect' ctx = do
+  let expect = reduceOnce expect'
+  let scrut = reduceOnce scrut'
+  case scrut of
+    ALam bod → case expect of
+      AProd xty rty → typeCheck bod rty (xty ⊳ ctx) 
+      _ → Left Unspecified -- Term should be of function type
+    term → do
+      infered ← typeInfer term ctx
+      if infered == expect then
+        Right ()
+      else
+        Left $ ExpectedTypeNotReceived expect infered
+
+ctxLookup :: Context -> Nat -> Either TypeCheckFailure AllFC
+ctxLookup (_ : ts) (Suc n) = ctxLookup ts n
+ctxLookup (t:_) Zero = Right t
+ctxLookup _ _ = Left VarOutOfBounds
+
+(⊳) :: AllFC → Context → Context
+t ⊳ ctx = shift 1 0 <$> (t : ctx)
+
+typeInfer ∷ AllFC -- ^ Scrutinee
+          → Context
+          → Either TypeCheckFailure AllFC -- ^ Either information about the failure or the type that has been infered
+typeInfer scrut ctx = case scrut of
+  AVar n -> ctxLookup ctx n
+  ASet -> Right . ATy $ 0
+  ATy n -> Right . ATy . Suc $ n
+  AApp fn arg -> do
+    funct <- reduceOnce <$> typeInfer fn ctx -- Maybe should be normalise
+    case funct of
+      AProd xty rty -> do
+        argt <- reduceOnce <$> typeInfer fn ctx -- Ditto
+        if argt == xty then
+          Right rty
+        else
+          Left Unspecified -- Argument did not match function application
+      _ -> Left Unspecified -- Non function application
+  AProd xty rty -> do
+     xtyty <- typeInfer xty  ctx
+     if isSort xtyty
+     then do
+       rtyty <- typeInfer rty (xtyty ⊳ ctx)
+       if isSort rtyty then
+          Right rtyty
+       else
+          Left ExpectedSort
+     else
+       Left ExpectedSort
+  _ -> Left UnInferrable
+
+
+isSort :: AllFC -> Bool
+isSort ASet = True
+isSort (ATy _) = True
+isSort _ = False
+
+
+newtype WellTyped = MkWT (AllFC, AllFC)
+  deriving (Eq, Show)
+
+
+mkWellTyped ∷ AllFC → AllFC → Either TypeCheckFailure WellTyped
+mkWellTyped t ty = typeCheck t ty [] >> (Right . MkWT $ (t, ty))
+
+-- Fairly sure that normalisation is type preserving in CoC and CDLE
+-- seems like a pretty hefty assumption - I should probably confirm
+-- It is safe to give infinite gas - becuase all well typed terms terminate
+normalise ∷ WellTyped → WellTyped
+normalise (MkWT (t, ty)) = MkWT (normaliseUnsafe inf t, ty)
+
+
+λ> 

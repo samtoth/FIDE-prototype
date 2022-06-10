@@ -1,0 +1,40 @@
+module CoreNodes where
+
+
+data FideCore where
+  Ty  ∷ FideCore
+  App ∷ (CodeTree a, CodeTree b) ⇒ a → b → FideCore
+  Lam ∷ (CodeTree a) ⇒ String → a → FideCore
+  Var ∷ Nat → FideCore
+  Prod ∷ (CodeTree a, CodeTree b) ⇒ Explicit → String  → a → b → FideCore
+
+
+  AVar ∷ Nat → AllFC
+  AProd ∷ Explicit → AllFC → AllFC → AllFC
+
+
+instance CodeTree FideCore where
+  desugar Ty = ATy
+  desugar (App a b) = AApp (desugar a) (desugar b)
+  desugar (Lam _ a) = ALam (desugar a)
+  desugar (Var n) = AVar n
+  desugar (Prod e _ t1 t2) = AProd e (desugar t1) (desugar t2) 
+
+  name Ty = "Ty"
+  name (App a b) = "(" <> name a <> " ∘ " <> name b <> ")"
+  name (Lam n a) = "λ" <> n <> ". " <>  name a
+  name (Var n)   = "# " <> show n
+  name (Prod e ident t n) = case e of
+    True →  "Π" <> ident <> ": " <> name t <> ". " <> name n
+    False → "∀" <> ident <> ": " <> name t <> ". " <> name n
+
+  children Ty = []
+  children (App a b) = [MkSome a, MkSome b]
+  children (Lam n a) = [MkSome a]
+  children (Var _) = []
+  children (Prod _ _ rty xty) = [MkSome rty, MkSome xty]
+
+
+
+instance Show FideCore where
+  show = name
